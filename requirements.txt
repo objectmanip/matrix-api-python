@@ -1,0 +1,12 @@
+httpx
+matrix-nio
+markdown
+fastapi
+uvicorn
+markdown
+fastapi
+uvicorn
+pydantic
+requests
+python-dotenv
+python-multipart

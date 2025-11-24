@@ -1,0 +1,87 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - VERSION
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Log in to Local Docker Registry
+        run: docker login $REGISTRY_HOST -u $REGISTRY_USER -p $REGISTRY_PASSWORD
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+
+      - name: Set IMAGE name from repo
+        run: echo "IMAGE=${REGISTRY_USER}/${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+
+      - name: Bump patch version
+        id: bump
+        if: ${{ github.event_name != 'schedule' }}
+        run: |
+          # Read the current version (default to 0.0.0 if missing)
+          if [ -f VERSION ]; then
+            VERSION=$(cat VERSION)
+          else
+            VERSION="0.0.0"
+          fi
+
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          patch=$((patch + 1))
+          NEW_VERSION="$major.$minor.$patch"
+
+          echo "Old version: $VERSION"
+          echo "New version: $NEW_VERSION"
+
+          echo "$NEW_VERSION" > VERSION
+
+          echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Commit bumped version
+        if: ${{ github.event_name != 'schedule' }}
+        run: |
+          git config user.name "gitea-actions"
+          git config user.email "actions@localhost"
+          git add VERSION
+          git commit -m "chore: bump version to ${{ env.VERSION }} [skip ci]" || echo "No changes"
+          git push
+
+      - name: Build Docker Image
+        run: |
+          if [ -z "${VERSION:-}" ]; then
+            VERSION=$(cat VERSION || echo "0.0.0")
+          fi
+          docker build -t $REGISTRY_HOST/$IMAGE:$VERSION -t $REGISTRY_HOST/$IMAGE:latest .
+          docker push $REGISTRY_HOST/$IMAGE:$VERSION
+          docker push $REGISTRY_HOST/$IMAGE:latest
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          VERSION: ${{ env.VERSION }}
+
+      - name: Send finished notification
+        env:
+          TITLE: "GITEA-Actions"
+          MESSAGE: "Commit by ${{ github.actor }}. ${{ env.IMAGE }}:${{ env.VERSION }} has been compiled and pushed"
+        run: |
+          curl -X POST "${{ secrets.NOTIFICATION_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"title\": \"$TITLE\", \"message\": \"$MESSAGE\"}"
+
+      - name: Trigger Update Request
+        run: 'curl -H "Authorization: Bearer $WATCHTOWER_TOKEN" $WATCHTOWER_UPDATE_API'
+        env:
+          WATCHTOWER_TOKEN: ${{ secrets.WATCHTOWER_TOKEN }}
+          WATCHTOWER_UPDATE_API: ${{ secrets.WATCHTOWER_UPDATE_API }}
+
