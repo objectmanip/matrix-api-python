@@ -8,3 +8,6 @@
 
 # ToDo
 - [ ] Documentation of functions and requirements
+
+
+2026-01-26 - 06:44 Added Force option for titled messages
