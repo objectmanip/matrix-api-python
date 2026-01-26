@@ -30,9 +30,11 @@ HOMEASSISTANT_TOKEN = os.getenv("HOMEASSISTANT_TOKEN")
 class PostMessageWithTitle(BaseModel):
     title: str
     message: str
+    force: bool = False
 
 class PostMessage(BaseModel):
     message: str
+    force: bool = False
 
 class MatrixApi:
     def __init__(self):
@@ -141,11 +143,12 @@ class MatrixApi:
 
     async def api_send_message(self, json_message: PostMessage):
         message = f"""{json_message.message}"""
+        force = json_message.force # Force is currently not used for untitled messages
         await self.send_message(message)
 
     async def api_send_message_with_title(self, json_message: PostMessageWithTitle):
         homeassistant_state, key = self.get_homeassistant_input_boolean_state(json_message.title)
-        if homeassistant_state:
+        if homeassistant_state and not json_message.force:
             message = f"""**{json_message.title}**<br>{json_message.message}"""
             await self.send_message(message)
         else:
