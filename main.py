@@ -46,35 +46,40 @@ class MatrixApi:
         self.load_collated_messages()
         self.setup_client()
 
-    async def schedule_collated_messages(self):
-        def get_next_wed_or_fri_at_18():
-            """
-            Get the next occurrence of either Wednesday or Friday at 18:00.
-            Returns whichever comes first.
-            """
-            now = datetime.now()
-            collate_settings = self.config.get('homeassistant', {}).get('collate_settings', {})
-            target_hour, target_minute = collate_settings.get('time', [18, 0])
-            target_days = collate_settings.get('days', [2, 4])  # Wednesday and Friday
-            candidates = []
-            for target_day in target_days:
-                current_day = now.weekday()
-                days_ahead = target_day - current_day
-                if days_ahead == 0:
-                    target_datetime = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-                    if now >= target_datetime:
-                        # Already passed today, get next week's occurrence
-                        days_ahead = 7
-                elif days_ahead < 0:
-                    days_ahead += 7
-                target_datetime = now + timedelta(days=days_ahead)
-                target_datetime = target_datetime.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-                candidates.append(target_datetime)
-            return min(candidates)
+    def get_next_send_time(self):
+        """
+        Get the next occurrence of either Wednesday or Friday at 18:00.
+        Returns whichever comes first.
+        """
+        now = datetime.now()
+        collate_settings = self.config.get('homeassistant', {}).get('collate_settings', {})
+        target_hour, target_minute = collate_settings.get('time', [18, 0])
+        target_days = collate_settings.get('days', [2, 4])  # Wednesday and Friday
+        candidates = []
+        for target_day in target_days:
+            current_day = now.weekday()
+            days_ahead = target_day - current_day
+            if days_ahead == 0:
+                target_datetime = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+                if now >= target_datetime:
+                    # Already passed today, get next week's occurrence
+                    days_ahead = 7
+            elif days_ahead < 0:
+                days_ahead += 7
+            target_datetime = now + timedelta(days=days_ahead)
+            target_datetime = target_datetime.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+            candidates.append(target_datetime)
+        next_datetime = min(candidates)
+        time_difference = next_datetime - now
+        total_seconds = int(time_difference.total_seconds())
+        return next_datetime, total_seconds
 
+    async def schedule_collated_messages(self):
         while True:
             await self.send_collated_messages()
-            await asyncio.sleep(get_next_send(self.config['homeassistant']['collate_settings']['time']))
+            next_datetime, seconds_until_send = self.get_next_send_time()
+            log.info(f"Sending collated messages at {next_datetime}")
+            await asyncio.sleep(seconds_until_send)
 
     async def send_collated_messages(self):
         log.info("Sending collated messages")
