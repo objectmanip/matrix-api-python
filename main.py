@@ -47,25 +47,30 @@ class MatrixApi:
         self.setup_client()
 
     async def schedule_collated_messages(self):
-        def get_next_send(time_list: list):
-            next_time = None
-            for element in time_list:
-                send_hour = element[0]
-                send_minute = element[1]
-                now = datetime.now()
-                target = now.replace(hour=send_hour, minute=send_minute, second=0, microsecond=0)
-
-                if target <= now:
-                    # if the target time already passed today, schedule for tomorrow
-                    target += timedelta(days=1)
-
-                wait_time = (target - now).total_seconds()
-                if next_time is None:
-                    next_time = wait_time
-                elif wait_time < next_time:
-                    next_time = wait_time
-            # log.info(f"Next wait time: {next_time}")
-            return next_time
+        def get_next_wed_or_fri_at_18():
+            """
+            Get the next occurrence of either Wednesday or Friday at 18:00.
+            Returns whichever comes first.
+            """
+            now = datetime.now()
+            collate_settings = self.config.get('homeassistant', {}).get('collate_settings', {})
+            target_hour, target_minute = collate_settings.get('time', [18, 0])
+            target_days = collate_settings.get('days', [2, 4])  # Wednesday and Friday
+            candidates = []
+            for target_day in target_days:
+                current_day = now.weekday()
+                days_ahead = target_day - current_day
+                if days_ahead == 0:
+                    target_datetime = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+                    if now >= target_datetime:
+                        # Already passed today, get next week's occurrence
+                        days_ahead = 7
+                elif days_ahead < 0:
+                    days_ahead += 7
+                target_datetime = now + timedelta(days=days_ahead)
+                target_datetime = target_datetime.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+                candidates.append(target_datetime)
+            return min(candidates)
 
         while True:
             await self.send_collated_messages()
@@ -148,7 +153,7 @@ class MatrixApi:
 
     async def api_send_message_with_title(self, json_message: PostMessageWithTitle):
         homeassistant_state, key = self.get_homeassistant_input_boolean_state(json_message.title)
-        if homeassistant_state and not json_message.force:
+        if homeassistant_state or json_message.force:
             message = f"""**{json_message.title}**<br>{json_message.message}"""
             await self.send_message(message)
         else:
