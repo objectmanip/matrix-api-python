@@ -11,3 +11,4 @@
 
 
 2026-01-26 - 06:44 Added Force option for titled messages
+2026-02-06 - 22:25 Bug Fixes
