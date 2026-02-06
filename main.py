@@ -68,7 +68,11 @@ class MatrixApi:
                 days_ahead += 7
             target_datetime = now + timedelta(days=days_ahead)
             target_datetime = target_datetime.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+            time_difference = datetime.now() - target_datetime
+            if time_difference.total_seconds() < 120:
+                continue
             candidates.append(target_datetime)
+        log.debug(candidates)
         next_datetime = min(candidates)
         time_difference = next_datetime - now
         total_seconds = int(time_difference.total_seconds())
@@ -80,6 +84,7 @@ class MatrixApi:
             next_datetime, seconds_until_send = self.get_next_send_time()
             log.info(f"Sending collated messages at {next_datetime}")
             await asyncio.sleep(seconds_until_send)
+
 
     async def send_collated_messages(self):
         log.info("Sending collated messages")
